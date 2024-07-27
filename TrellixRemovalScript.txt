@@ -1,0 +1,45 @@
+[200~# Check if $PSScriptRoot is empty and set it to the current directory if it is
+if (-not $PSScriptRoot) {
+    $PSScriptRoot = Get-Location
+}
+ 
+# Define paths based on the script location
+$csvPath = Join-Path -Path $PSScriptRoot -ChildPath "AVRemoval.csv"
+$vmData = Import-Csv $csvPath
+$LogFile = Join-Path -Path $PSScriptRoot -ChildPath "Trellix.log"
+$PSEexcPath = Join-Path -Path $PSScriptRoot -ChildPath "PsExec.exe"
+$EndpointPath = Join-Path -Path $PSScriptRoot -ChildPath "EndpointProductRemoval.exe"
+$sourceFile = Join-Path -Path $PSScriptRoot -ChildPath "ePO_ProductRemovalTool"
+ 
+Function WriteLog {
+    Param([string]$LogString)
+    $Stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $LogMessage = "$Stamp $LogString"
+    Add-Content $LogFile -Value $LogMessage
+}
+ 
+Function RemoveAV {
+    Param([string]$vmIP, [string]$username, [SecureString]$securePassword)
+    foreach ($row in $vmData) {
+        $vmIP = $row.VM_IP
+        $username = $row.Username
+        $password = $row.Password
+        $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+        $destinationDrive = "Z"
+        $destinationPath = "\\$vmIP\c$\temp"
+        $credential = New-Object System.Management.Automation.PSCredential($username, $securePassword)
+       # Convert SecureString to plain text for PsExec
+        $passwordPlainText = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword))
+        # Map a network drive with predefined credentials
+        New-PSDrive -Name $destinationDrive -PSProvider "FileSystem" -Root $destinationPath -Credential $credential -ErrorAction Stop | Out-Null
+        # Copy files from source to destination using the mapped drive
+        Copy-Item -Path $sourceFile -Destination $destinationPath -Recurse -Force -ErrorAction Stop
+        WriteLog "The epo_ProductRemovalTool copied successfully to $vmIp"
+
+&$PSEexcPath \\$vmIP -u $username -p $password -h -i -d "C:\temp\ePO_ProductRemovalTool\EndpointProductRemoval.exe" --All --accepteula  --noreboot
+        WriteLog "EndpointRemoval successfully  executed on the targetted $vmIP"
+        Remove-PSDrive -Name $destinationDrive -ErrorAction SilentlyContinue
+        WriteLog "Z drive removed successfully"
+}
+}
+RemoveAV

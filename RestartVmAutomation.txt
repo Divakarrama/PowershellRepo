@@ -1,0 +1,71 @@
+# Check if $PSScriptRoot is empty and set it to the current directory if it is
+if (-not $PSScriptRoot) {
+    $PSScriptRoot = Get-Location
+}
+ 
+$csvPath = Join-Path -Path $PSScriptRoot -ChildPath "RestartVMs.csv"
+$vmData = Import-Csv $csvPath
+$LogFile = Join-Path -Path $PSScriptRoot -ChildPath "Restartvm.log"
+ 
+Function WriteLog {
+    Param([string]$LogString)
+    $Stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $LogMessage = "$Stamp $LogString"
+    Add-Content $LogFile -Value $LogMessage
+}
+ 
+Function RestartVms {
+    foreach ($Record in $vmData) {
+        try {
+            Write-Host $Record.VmName -ForegroundColor Yellow
+ 
+            # Check if the execution status is "Yes"
+            if ($Record.'Execution Status' -eq "Yes") {
+                WriteLog "The Execution status is Yes.Restarting the VM"
+                $Restart = Restart-VM -VM $Record.VmName -Confirm:$false -ErrorAction SilentlyContinue
+ 
+                if ($Restart.PowerState -eq "PoweredOn") {
+                    WriteLog "VM $($Record.VmName) has been successfully restarted"
+                    Write-Host "VM $($Record.VmName) is successfully restarted"
+                } else {
+                    WriteLog "VM $($Record.VmName) restart has been unsuccessfull"
+                    Write-Host "VM $($Record.VmName) restart has been unsuccessfull" -ForegroundColor Red
+                }
+            } else {
+                WriteLog "Skipping VM $($Record.VmName) as Execution Status is No"
+                Write-Host "Skipping VM $($Record.VmName) as Execution Status is No" -ForegroundColor Yellow
+            }
+        } catch {
+            WriteLog "$($_.Exception.Message)"
+            Write-Host $_.Exception.Message -ForegroundColor Red
+        }
+    }
+}
+ 
+# Function to create secure credentials
+Function Get-SecureCredentials {
+    Param(
+        [string]$Username,
+        [string]$Password
+    )
+ 
+    $SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+    return New-Object System.Management.Automation.PSCredential($Username, $SecurePassword)
+}
+ 
+ 
+ 
+#username and Password for ESXI host Credentials
+$user = "Administrator@Vsphere.local"
+$passw = "Suitlab@123"
+$VIServer = "192.168.85.178"
+ 
+# Connecting to the ESXI HOST
+Connect-VIServer $VIServer -User $user -Password $passw
+ 
+# Execute VM restart function
+RestartVms
+ 
+# Disconnect from the ESXi host
+Disconnect-VIServer -Confirm:$false
+

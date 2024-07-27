@@ -1,0 +1,45 @@
+[200~# Check if $PSScriptRoot is empty and set it to the current directory if it is
+if (-not $PSScriptRoot) {
+    $PSScriptRoot = $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+}
+ 
+ 
+# Define paths based on the script location
+$csvPath = Join-Path -Path $PSScriptRoot -ChildPath "SemantecAVRemoval.csv"
+$vmData = Import-Csv $csvPath
+$LogFile = Join-Path -Path $PSScriptRoot -ChildPath "Symantec.log"
+ 
+ 
+Function WriteLog {
+    Param([string]$LogString)
+    $Stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $LogMessage = "$Stamp $LogString"
+    Add-Content $LogFile -Value $LogMessage
+}
+ 
+Function RemoveSymantecAV {
+    Param([string]$vmIP, [string]$username, [SecureString]$securePassword)
+    foreach ($row in $vmData) {
+            $vmIP = $row.VM_IP
+            $VmName= $row.VmName
+     # Query for Symantec Endpoint Protection installation status on the remote computer
+     $sepInstalled = Get-WmiObject -Class Win32_Product -Filter "Name='Symantec Endpoint Protection'" -ComputerName $vmIP
+ 
+# Check if Symantec Endpoint Protection is installed
+if ($sepInstalled) {
+    Write-Host "Symantec Endpoint Protection is installed on $VmName."
+    WriteLog "Symantec Endpoint Protection is installed on $VmName."
+ 
+    #Uninstall Symantec Endpoint Protection
+    $sepInstalled.Uninstall()
+    Write-Host "Uninstallation command sent to Symantec Endpoint Protection on $VmName."
+    WriteLog "Uninstallation command sent to Symantec Endpoint Protection on $VmName."
+} else {
+    Write-Host "Symantec Endpoint Protection is not installed on $VmName. No action taken."
+    WriteLog "Symantec Endpoint Protection is not installed on $VmName. No action taken."
+ 
+ 
+}
+}
+}
+RemoveSymantecAV 
